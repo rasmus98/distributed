@@ -45,6 +45,7 @@ class SystemMonitor:
     ):
         self.proc = psutil.Process()
         self.count = 0
+        self.children = set()
 
         if maxlen is no_default:
             maxlen = dask.config.get("distributed.admin.system-monitor.log-length")
@@ -158,9 +159,20 @@ class SystemMonitor:
         self.count += 1
 
         with self.proc.oneshot():
+              cpu = self.proc.cpu_percent()
+              memory = self.proc.memory_info().rss
+              children = set(self.proc.children(True)) - self.children
+              if children:
+                  self.children.update(children)
+              self.children = set(item for item in self.children
+                                  if item.is_running())
+              for item in self.children:
+                  with item.oneshot():
+                      cpu += item.cpu_percent()
+                      memory += item.memory_info().rss
             result = {
-                "cpu": self.proc.cpu_percent(),
-                "memory": self.get_process_memory(),
+                "cpu": cpu,
+                "memory": memory,
                 "time": now,
             }
 
